@@ -15,7 +15,7 @@ import org.joml.*;
 
 public class Code extends JFrame implements GLEventListener, KeyListener, MouseWheelListener
 {	private GLCanvas myCanvas;
-	private int renderingProgram0, renderingProgram, axesProgram, cubeMapProgram;
+	private int renderingProgram0, renderingProgram, axesProgram, cubeMapProgram, terrainProgram;
 	private int vao[] = new int[1];
 	private int vbo[] = new int[17];
 	private float cameraX, cameraY, cameraZ;
@@ -86,9 +86,15 @@ public class Code extends JFrame implements GLEventListener, KeyListener, MouseW
 	
 	private Vector3f origin = new Vector3f(0.0f, 0.0f, 0.0f);
 	private Vector3f originUp = new Vector3f(0.0f, 1.0f, 0.0f);
+	
+	//
+	private Vector3f terLoc = new Vector3f(0.0f, 0.0f, 0.0f);
+	private float tessInner = 30.0f;
+	private float tessOuter = 20.0f;
+	private int moonTex, moonHeight, moonNormal;
 
 	public Code()
-	{	setTitle("Assignment #3");
+	{	setTitle("Assignment #4");
 		setSize(600, 600);
 		myCanvas = new GLCanvas();
 		myCanvas.addGLEventListener(this);
@@ -158,9 +164,12 @@ public class Code extends JFrame implements GLEventListener, KeyListener, MouseW
 		
 		// draw xyz axes
 		drawXYZAxes(gl);
+		
+		// draw terrain
+		drawTerrain(gl);
 	} // end display
 	
-	// pass one
+	// pass one for shadows
 	private void passOne(GL4 gl) {
 		gl.glUseProgram(renderingProgram0);
 		
@@ -253,8 +262,9 @@ public class Code extends JFrame implements GLEventListener, KeyListener, MouseW
 		gl.glDrawArrays(GL_TRIANGLES, 0, 192);
 	} // end passOne
 	
-	// pass two
-	private void passTwo(GL4 gl) {
+	// pass two for shadows
+	private void passTwo(GL4 gl) {		
+		// use renderingProgram
 		gl.glUseProgram(renderingProgram);
 		
 		// associate with renderingProgram
@@ -634,6 +644,56 @@ public class Code extends JFrame implements GLEventListener, KeyListener, MouseW
 		} // end if
 	} // end drawXYZAxes
 	
+	// draw height and normal mapped terrain
+	private void drawTerrain(GL4 gl) {
+		// use terrainProgram
+		gl.glUseProgram(terrainProgram);
+			// associate with renderingProgram
+		//mvLoc = gl.glGetUniformLocation(renderingProgram, "mv_matrix");
+		mLoc = gl.glGetUniformLocation(terrainProgram, "m_matrix");
+		vLoc = gl.glGetUniformLocation(terrainProgram, "v_matrix");
+		pLoc = gl.glGetUniformLocation(terrainProgram, "p_matrix");	
+		nLoc = gl.glGetUniformLocation(terrainProgram, "norm_matrix");
+		//sLoc = gl.glGetUniformLocation(renderingProgram, "shadowMVP");
+			// build vMat
+		vMat.identity();
+		vMat.setTranslation(-cameraX, -cameraY, -cameraZ);
+		vMat = camera.getViewMatrix();
+		// terrain
+			// apply transforms to mMat
+		mMat.identity();
+		mMat.setTranslation(terLoc.x(), terLoc.y() - 10, terLoc.z());
+		//mMat.rotateX((float)20.0f);
+		mMat.scale(100.0f, 25.0f, 100.0f);
+			// assign invTrMat
+		mMat.invert(invTrMat);
+		invTrMat.transpose(invTrMat);
+			// install lights
+		installLights();
+			// associate with renderingProgram
+		//gl.glUniformMatrix4fv(mvLoc, 1, false, mvMat.get(vals));
+		gl.glUniformMatrix4fv(mLoc, 1, false, mMat.get(vals));
+		gl.glUniformMatrix4fv(vLoc, 1, false, vMat.get(vals));
+		gl.glUniformMatrix4fv(pLoc, 1, false, pMat.get(vals));
+		gl.glUniformMatrix4fv(nLoc, 1, false, invTrMat.get(vals));
+		//gl.glUniformMatrix4fv(sLoc, 1, false, shadowMVP2.get(vals));
+			// texture
+		gl.glActiveTexture(GL_TEXTURE0);
+		gl.glBindTexture(GL_TEXTURE_2D, moonTex);
+		gl.glActiveTexture(GL_TEXTURE1);
+		gl.glBindTexture(GL_TEXTURE_2D, moonHeight);
+		gl.glActiveTexture(GL_TEXTURE2);
+		gl.glBindTexture(GL_TEXTURE_2D, moonNormal);
+			// draw terrain
+		gl.glClear(GL_DEPTH_BUFFER_BIT);
+		gl.glEnable(GL_DEPTH_TEST);
+		gl.glEnable(GL_CULL_FACE);
+		gl.glFrontFace(GL_CW);
+		gl.glPatchParameteri(GL_PATCH_VERTICES, 4);
+		gl.glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+		gl.glDrawArraysInstanced(GL_PATCHES, 0, 4, 64*64);
+	} // end drawTerrain
+	
 	@Override
 	public void keyPressed(KeyEvent e)
 	{	
@@ -930,8 +990,12 @@ public class Code extends JFrame implements GLEventListener, KeyListener, MouseW
 		cubeMapProgram = Utils.createShaderProgram("a4/cmVertShader.glsl", "a4/cmFragShader.glsl");
 		renderingProgram0 = Utils.createShaderProgram("a4/vert0Shader.glsl", "a4/frag0Shader.glsl");
 		renderingProgram = Utils.createShaderProgram("a4/vertShader.glsl", "a4/fragShader.glsl");
+		terrainProgram = Utils.createShaderProgram("a4/terrVertShader.glsl", "a4/tessCShader.glsl", "a4/tessEShader.glsl", "a4/terrFragShader.glsl");
 		axesProgram = Utils.createShaderProgram("a4/axesVertShader.glsl", "a4/axesFragShader.glsl");
 
+		moonTex = Utils.loadTexture("squareMoonMap.jpg");
+		moonHeight = Utils.loadTexture("squareMoonBump.jpg");
+		moonNormal = Utils.loadTexture("squareMoonNormal.jpg");
 		
 		myModel = new ImportedModel("complexCube.obj");
 		sphere = new ImportedModel("sphere.obj");
